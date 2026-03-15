@@ -217,7 +217,9 @@ class _AIVoiceScreenState extends State<AIVoiceScreen> {
   }
 
   Future<void> _initOutputFolder() async {
-    final downloadsDir = Directory('${Platform.environment['USERPROFILE']}\\Downloads\\ai_voice');
+    final userHome = Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? '';
+    final downloadsPath = path.join(userHome, 'Downloads', 'ai_voice');
+    final downloadsDir = Directory(downloadsPath);
     if (!await downloadsDir.exists()) {
       await downloadsDir.create(recursive: true);
     }
@@ -481,7 +483,7 @@ ${instruction.isNotEmpty ? '- Additional instructions: $instruction' : ''}''';
     try {
       // Generate unique filename
       final fileName = 'voice_${DateTime.now().millisecondsSinceEpoch}.wav';
-      final filePath = '$_outputFolder\\$fileName';
+      final filePath = path.join(_outputFolder, fileName);
       
       print('[AI_VOICE] Output path: $filePath');
       
@@ -511,11 +513,14 @@ ${instruction.isNotEmpty ? '- Additional instructions: $instruction' : ''}''';
     }
   }
 
-  Future<void> _playAudio(String path) async {
+  Future<void> _playAudio(String filePath) async {
     try {
-      // Use Windows default player
-      await Process.run('cmd', ['/c', 'start', '', path]);
-      setState(() => _playingFile = path);
+      if (Platform.isMacOS) {
+        await Process.run('open', [filePath]);
+      } else {
+        await Process.run('cmd', ['/c', 'start', '', filePath]);
+      }
+      setState(() => _playingFile = filePath);
       // Reset after a delay (since we can't track system player state)
       Future.delayed(const Duration(seconds: 3), () {
         if (mounted) {
@@ -530,7 +535,11 @@ ${instruction.isNotEmpty ? '- Additional instructions: $instruction' : ''}''';
   }
 
   void _openOutputFolder() {
-    Process.run('explorer', [_outputFolder]);
+    if (Platform.isMacOS) {
+      Process.run('open', [_outputFolder]);
+    } else {
+      Process.run('explorer', [_outputFolder]);
+    }
   }
   
   void _retryTask(VoiceTask task) {

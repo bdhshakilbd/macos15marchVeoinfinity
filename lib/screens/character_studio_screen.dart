@@ -575,7 +575,7 @@ Generate [SCENE_COUNT] scene prompts.''',
     
     // Use VEO3 projects folder for output to match video generation
     _cdpOutputFolder = path.join(
-      Platform.environment['USERPROFILE'] ?? Directory.current.path, 
+      Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? Directory.current.path, 
       'Downloads', 
       'VEO3', 
       'projects'
@@ -8388,7 +8388,7 @@ Generate [SCENE_COUNT] scene prompts.''',
     try {
       final response = await http.get(Uri.parse(url));
       if (response.statusCode == 200) {
-        final outputDir = path.join(Platform.environment['USERPROFILE'] ?? '', 'Downloads', 'T2V_Videos');
+        final outputDir = path.join(Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? '', 'Downloads', 'T2V_Videos');
         await Directory(outputDir).create(recursive: true);
         
         final timestamp = DateTime.now().millisecondsSinceEpoch;

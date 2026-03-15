@@ -43,6 +43,91 @@ class _FFmpegInfoScreenState extends State<FFmpegInfoScreen> {
     setState(() {
       _isLoading = false;
     });
+
+    // Show install instructions popup if FFmpeg not found on macOS
+    if (!_ffmpegWorking && Platform.isMacOS && mounted) {
+      _showMacFFmpegInstallDialog();
+    }
+  }
+
+  void _showMacFFmpegInstallDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber, color: Colors.orange, size: 28),
+            SizedBox(width: 10),
+            Text('FFmpeg Not Found'),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'FFmpeg is required for video export, audio processing, and image compression.\n\nInstall it on macOS using one of these methods:',
+                style: TextStyle(fontSize: 14),
+              ),
+              const SizedBox(height: 16),
+              const Text('Method 1: Homebrew (Recommended)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+              const SizedBox(height: 8),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade900,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const SelectableText(
+                  '# Install Homebrew (if not installed):\n'
+                  '/bin/bash -c "\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"\n\n'
+                  '# Install FFmpeg:\n'
+                  'brew install ffmpeg\n\n'
+                  '# Verify:\n'
+                  'ffmpeg -version',
+                  style: TextStyle(fontFamily: 'monospace', fontSize: 12, color: Colors.greenAccent),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text('Method 2: Direct Download', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+              const SizedBox(height: 8),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade900,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const SelectableText(
+                  '# Download from evermeet.cx:\n'
+                  'curl -L https://evermeet.cx/ffmpeg/getrelease -o ffmpeg.zip\n'
+                  'unzip ffmpeg.zip\n'
+                  'sudo mv ffmpeg /usr/local/bin/\n\n'
+                  '# Download ffprobe:\n'
+                  'curl -L https://evermeet.cx/ffmpeg/getrelease/ffprobe -o ffprobe.zip\n'
+                  'unzip ffprobe.zip\n'
+                  'sudo mv ffprobe /usr/local/bin/',
+                  style: TextStyle(fontFamily: 'monospace', fontSize: 12, color: Colors.cyanAccent),
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'After installing, restart the app and check this page again.',
+                style: TextStyle(fontSize: 13, color: Colors.grey),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('OK, Got it'),
+          ),
+        ],
+      ),
+    );
   }
 
   // Mobile FFmpeg test removed - using Process.run on all platforms
