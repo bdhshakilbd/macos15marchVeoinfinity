@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'dart:io';
+import 'package:file_picker/file_picker.dart';
 import '../services/profile_manager_service.dart';
+import '../utils/config.dart';
 
 /// Widget for managing multiple Chrome profiles
 class ProfileManagerWidget extends StatefulWidget {
@@ -36,6 +39,116 @@ class _ProfileManagerWidgetState extends State<ProfileManagerWidget> {
     super.dispose();
   }
 
+  /// Check Chrome and auto-popup if not found
+  Future<bool> _ensureChromeAvailable() async {
+    if (AppConfig.isChromeFound) return true;
+    
+    // Chrome not found — show dialog to select it
+    if (!mounted) return false;
+    
+    final selected = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.warning_amber, color: Colors.orange, size: 28),
+            const SizedBox(width: 8),
+            const Text('Chrome Not Found'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Chrome was not found at the default path:'),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: Colors.red.shade200),
+              ),
+              child: Text(
+                AppConfig.chromePath,
+                style: TextStyle(fontFamily: 'monospace', fontSize: 11, color: Colors.red.shade900),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              Platform.isMacOS
+                  ? 'Please locate "Google Chrome" in your Applications folder.'
+                  : 'Please locate "chrome.exe" on your system.',
+              style: TextStyle(color: Colors.grey[600], fontSize: 13),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton.icon(
+            onPressed: () async {
+              final result = await _pickChromeExecutable();
+              if (result != null) {
+                Navigator.pop(ctx, true);
+              }
+            },
+            icon: const Icon(Icons.folder_open, size: 18),
+            label: const Text('Select Chrome'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue,
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+    
+    return selected == true && AppConfig.isChromeFound;
+  }
+
+  /// Pick Chrome executable via file picker
+  Future<String?> _pickChromeExecutable() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        dialogTitle: Platform.isMacOS ? 'Select Google Chrome App' : 'Select chrome.exe',
+        type: Platform.isMacOS ? FileType.any : FileType.custom,
+        allowedExtensions: Platform.isMacOS ? null : ['exe'],
+      );
+      
+      if (result != null && result.files.single.path != null) {
+        String selectedPath = result.files.single.path!;
+        
+        // On macOS, if user selected the .app bundle, append the executable path
+        if (Platform.isMacOS && selectedPath.endsWith('.app')) {
+          selectedPath = '$selectedPath/Contents/MacOS/Google Chrome';
+        }
+        
+        if (File(selectedPath).existsSync()) {
+          AppConfig.setCustomChromePath(selectedPath);
+          if (mounted) setState(() {});
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('✓ Chrome path set: $selectedPath')),
+          );
+          return selectedPath;
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Chrome executable not found at: $selectedPath'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      print('[ProfileManager] Error picking Chrome: $e');
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Card(
@@ -61,6 +174,59 @@ class _ProfileManagerWidgetState extends State<ProfileManagerWidget> {
               ],
             ),
             const Divider(height: 24),
+            
+            // Chrome path indicator
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: AppConfig.isChromeFound ? Colors.green.shade50 : Colors.red.shade50,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(
+                  color: AppConfig.isChromeFound ? Colors.green.shade200 : Colors.red.shade200,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    AppConfig.isChromeFound ? Icons.check_circle : Icons.error,
+                    color: AppConfig.isChromeFound ? Colors.green : Colors.red,
+                    size: 16,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Chrome: ${AppConfig.chromePath}',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontFamily: 'monospace',
+                        color: AppConfig.isChromeFound ? Colors.green.shade900 : Colors.red.shade900,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  InkWell(
+                    onTap: () async {
+                      await _pickChromeExecutable();
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade50,
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: Colors.blue.shade200),
+                      ),
+                      child: Text(
+                        AppConfig.isChromeFound ? 'Change' : 'Select Chrome',
+                        style: TextStyle(fontSize: 10, color: Colors.blue.shade700, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            
+            const SizedBox(height: 12),
             
             // Credentials row
             Row(
@@ -442,6 +608,10 @@ class _ProfileManagerWidgetState extends State<ProfileManagerWidget> {
 
   // Connect to already-opened browsers
   Future<void> _handleConnectOpened() async {
+    // Check Chrome is available before connecting
+    final chromeOk = await _ensureChromeAvailable();
+    if (!chromeOk) return;
+    
     setState(() {
       _isProcessing = true;
       _statusMessage = 'Connecting to $_profileCount opened browsers...';
@@ -472,6 +642,10 @@ class _ProfileManagerWidgetState extends State<ProfileManagerWidget> {
 
   // Open browsers without login
   Future<void> _handleOpenWithoutLogin() async {
+    // Check Chrome is available before opening
+    final chromeOk = await _ensureChromeAvailable();
+    if (!chromeOk) return;
+    
     setState(() {
       _isProcessing = true;
       _statusMessage = 'Opening $_profileCount browsers...';

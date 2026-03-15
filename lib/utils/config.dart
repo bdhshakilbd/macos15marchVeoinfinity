@@ -45,11 +45,37 @@ class AppConfig {
     return path.join(exeDir, 'profiles');
   }
 
+  /// Custom Chrome path set by user (overrides auto-detection)
+  static String? _customChromePath;
+  
+  /// Check if Chrome exists at the configured path
+  static bool get isChromeFound => File(chromePath).existsSync();
+
   static String _getChromePath() {
+    // Check for user-saved custom path first
+    if (_customChromePath != null && File(_customChromePath!).existsSync()) {
+      return _customChromePath!;
+    }
+    
+    // Try loading saved custom path from disk
+    try {
+      final savedPath = _loadSavedChromePath();
+      if (savedPath != null && File(savedPath).existsSync()) {
+        _customChromePath = savedPath;
+        return savedPath;
+      }
+    } catch (_) {}
+    
     if (Platform.isMacOS) {
-      const macPath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-      if (File(macPath).existsSync()) return macPath;
-      return macPath; // Default on mac
+      // Try common macOS Chrome locations
+      const macPaths = [
+        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+        '/Applications/Google Chrome.app',
+      ];
+      for (final p in macPaths) {
+        if (File(p).existsSync()) return p;
+      }
+      return macPaths[0]; // Default (will show as "not found")
     }
     
     // Windows paths
@@ -59,6 +85,41 @@ class AppConfig {
     if (File(path1).existsSync()) return path1;
     if (File(path2).existsSync()) return path2;
     return path2; // Default
+  }
+
+  /// Set a custom Chrome path (persists to disk)
+  static void setCustomChromePath(String newPath) {
+    _customChromePath = newPath;
+    chromePath = newPath;
+    // Save to disk
+    try {
+      final appDataDir = getAppDataDir();
+      final dir = Directory(appDataDir);
+      if (!dir.existsSync()) dir.createSync(recursive: true);
+      final configFile = File(path.join(appDataDir, 'chrome_config.json'));
+      configFile.writeAsStringSync('{"chromePath": "$newPath"}');
+      print('[AppConfig] Saved custom Chrome path: $newPath');
+    } catch (e) {
+      print('[AppConfig] Error saving Chrome path: $e');
+    }
+  }
+
+  /// Load saved Chrome path from disk
+  static String? _loadSavedChromePath() {
+    try {
+      final configFile = File(path.join(getAppDataDir(), 'chrome_config.json'));
+      if (configFile.existsSync()) {
+        final content = configFile.readAsStringSync();
+        final data = (content.contains('{')) ? content : '{}';
+        final json = data.contains('chromePath') ? data : '{}';
+        if (json != '{}') {
+          // Simple parse - avoid importing dart:convert at top level
+          final match = RegExp(r'"chromePath"\s*:\s*"([^"]+)"').firstMatch(json);
+          if (match != null) return match.group(1);
+        }
+      }
+    } catch (_) {}
+    return null;
   }
 
   /// Get FFmpeg path - robust lookup via FFmpegUtils
