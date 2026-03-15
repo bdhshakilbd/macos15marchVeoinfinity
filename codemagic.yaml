@@ -85,39 +85,15 @@ workflows:
           echo "Bundled Playwright server:"
           ls -lah "$PW_DIR"/
 
-      - name: Create DMG installer (optional)
-        script: |
-          # Install create-dmg tool
-          brew install create-dmg
-          
-          # Create DMG
-          cd build/macos/Build/Products/Release
-          
-          # Rename output app to match desired name
-          mv veo3_another.app "$APP_NAME.app" || true
-          
-          create-dmg \
-            --volname "$APP_NAME Installer" \
-            --window-pos 200 120 \
-            --window-size 800 400 \
-            --icon-size 100 \
-            --app-drop-link 600 185 \
-            "$APP_NAME.dmg" \
-            "$APP_NAME.app" || true
-      
-      - name: Create ZIP archive
+      - name: Rename app
         script: |
           cd build/macos/Build/Products/Release
-          # Rename if not already renamed (in case create-dmg step failed/skipped)
           if [ -d "veo3_another.app" ]; then
             mv veo3_another.app "$APP_NAME.app"
           fi
-          zip -r "$APP_NAME.zip" "$APP_NAME.app"
     
     artifacts:
       - build/macos/Build/Products/Release/*.app
-      - build/macos/Build/Products/Release/*.dmg
-      - build/macos/Build/Products/Release/*.zip
     
     publishing:
       email:
