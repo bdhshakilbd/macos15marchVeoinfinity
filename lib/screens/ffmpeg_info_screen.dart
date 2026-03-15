@@ -1,8 +1,5 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter_new/ffprobe_kit.dart';
-import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit_config.dart';
 
 import 'package:veo3_another/utils/ffmpeg_utils.dart';
 
@@ -38,11 +35,8 @@ class _FFmpegInfoScreenState extends State<FFmpegInfoScreen> {
                     Platform.isWindows ? 'Windows' : 
                     Platform.isMacOS ? 'macOS' : 'Unknown';
 
-    if (Platform.isAndroid || Platform.isIOS) {
-      // Mobile: Use FFmpegKit
-      await _testMobileFFmpeg();
-    } else {
-      // Desktop: Use Process
+    if (true) {
+      // Use Process with FFmpegUtils on all platforms
       await _testDesktopFFmpeg();
     }
 
@@ -51,43 +45,7 @@ class _FFmpegInfoScreenState extends State<FFmpegInfoScreen> {
     });
   }
 
-  Future<void> _testMobileFFmpeg() async {
-    // Test FFmpeg
-    try {
-      final session = await FFmpegKit.execute('-version');
-      final output = await session.getOutput();
-      final returnCode = await session.getReturnCode();
-      
-      if (returnCode?.isValueSuccess() == true && output != null) {
-        _ffmpegVersion = output;
-        _ffmpegWorking = true;
-      } else {
-        _ffmpegVersion = 'FFmpeg failed to execute\nReturn code: ${returnCode?.getValue()}';
-        _ffmpegWorking = false;
-      }
-    } catch (e) {
-      _ffmpegVersion = 'FFmpeg Error: $e';
-      _ffmpegWorking = false;
-    }
-
-    // Test FFprobe
-    try {
-      final session = await FFprobeKit.execute('-version');
-      final output = await session.getOutput();
-      final returnCode = await session.getReturnCode();
-      
-      if (returnCode?.isValueSuccess() == true && output != null) {
-        _ffprobeTest = output;
-        _ffprobeWorking = true;
-      } else {
-        _ffprobeTest = 'FFprobe failed to execute\nReturn code: ${returnCode?.getValue()}';
-        _ffprobeWorking = false;
-      }
-    } catch (e) {
-      _ffprobeTest = 'FFprobe Error: $e';
-      _ffprobeWorking = false;
-    }
-  }
+  // Mobile FFmpeg test removed - using Process.run on all platforms
 
   Future<void> _testDesktopFFmpeg() async {
     final ffmpegPath = await FFmpegUtils.getFFmpegPath();
@@ -303,8 +261,8 @@ class _FFmpegInfoScreenState extends State<FFmpegInfoScreen> {
                           const SizedBox(height: 12),
                           Text(
                             Platform.isAndroid || Platform.isIOS
-                                ? '• Using ffmpeg_kit_flutter_new package\n'
-                                  '• FFmpeg is bundled with the app\n'
+                                ? '• Using system FFmpeg via Process.run\n'
+                                  '• FFmpeg found via FFmpegUtils\n'
                                   '• Supports video concatenation, encoding\n'
                                   '• FFprobe for media information'
                                 : '• Using system FFmpeg installation\n'

@@ -2,10 +2,6 @@ import 'dart:io';
 import 'dart:convert';
 import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as path;
-import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit_config.dart';
-import 'package:ffmpeg_kit_flutter_new/return_code.dart';
-import 'package:ffmpeg_kit_flutter_new/ffprobe_kit.dart';
 import 'package:flutter/foundation.dart';
 import 'app_logger.dart';
 import 'package:veo3_another/utils/ffmpeg_utils.dart';
@@ -71,25 +67,9 @@ class VideoExportHelper {
 
     onProgress?.call('Fast copy mode (no re-encoding)...', null);
 
-    if (Platform.isAndroid || Platform.isIOS) {
-      // Use FFmpegKit on mobile
-      final command = '-y -f concat -safe 0 -i "${listFile.path}" -c copy "$outputPath"';
-      
-      AppLogger.i('[FFMPEG KIT] Running: $command');
-      
-      final session = await FFmpegKit.execute(command);
-      final returnCode = await session.getReturnCode();
-      
-      // Clean up
-      try { await listFile.delete(); } catch (_) {}
-      
-      if (!ReturnCode.isSuccess(returnCode)) {
-        final logs = await session.getAllLogsAsString();
-        AppLogger.e('[FFMPEG KIT] Error: $logs');
-        throw Exception('FFmpeg error - check console for details');
-      }
-    } else {
-      // Use Process on desktop
+    if (true) {
+      // Use Process on all platforms
+      final ffmpegPath = await FFmpegUtils.getFFmpegPath();
       final process = await Process.start(
         ffmpegPath,
         [
@@ -295,72 +275,14 @@ class VideoExportHelper {
     
     DateTime startTime = DateTime.now();
     
-    if (Platform.isAndroid || Platform.isIOS) {
-       // Register cancel callback for Mobile
-       ExportStatus.registerCancelCallback(() {
-          FFmpegKit.cancel();
-       });
-
-       // FFmpegKit
-       
-       // RE-construct command string carefully
-       final sb = StringBuffer();
-       sb.write('-y ');
-       for (var i=0; i<files.length; i++) {
-          if (files[i].path != null) {
-            sb.write('-i "${files[i].path}" ');
-          }
-       }
-       sb.write('-filter_complex "${complexFilter.toString()}" ');
-       sb.write('-map "$vOutMap" -map "$aOutMap" ');
-       sb.write('-c:v libx264 -preset $preset -crf 23 -c:a aac -b:a 192k ');
-       sb.write('"$outputPath"');
-       
-       final fullCmd = sb.toString();
-       print('[FFMPEG KIT] CMD: $fullCmd');
-       
-       FFmpegKitConfig.enableStatisticsCallback((statistics) {
-          final time = statistics.getTime(); // ms
-          if (time > 0) {
-            final secondsProcessed = time / 1000.0;
-            
-            String msg = 'Processed ${secondsProcessed.toStringAsFixed(1)}s';
-            double? pct;
-            
-            if (totalDuration > 0) {
-              pct = (secondsProcessed / totalDuration).clamp(0.0, 1.0);
-              final pctStr = (pct * 100).toStringAsFixed(1);
-              
-              // ETA calculation
-              final elapsed = DateTime.now().difference(startTime).inSeconds;
-              if (pct > 0.05 && elapsed > 2) {
-                 final totalEst = elapsed / pct;
-                 final remaining = (totalEst - elapsed).round();
-                 final remDuration = Duration(seconds: remaining);
-                 msg = '$pctStr% - ETA: ${_formatDuration(remDuration)}';
-              } else {
-                 msg = '$pctStr% processed';
-              }
-            }
-            
-            onProgress?.call(msg, pct);
-          }
-       });
-       
-       final session = await FFmpegKit.execute(fullCmd);
-       if (!ReturnCode.isSuccess(await session.getReturnCode())) {
-           final logs = await session.getAllLogsAsString();
-           print('Error: $logs');
-           throw Exception('Export failed');
-       }
-    } else {
-       // Desktop Process.start
-       final process = await Process.start(ffmpegPath, commandParts, runInShell: true);
+    if (true) {
+       // Use Process.start on all platforms
+       final ffmpegExePath = await FFmpegUtils.getFFmpegPath();
+       final process = await Process.start(ffmpegExePath, commandParts, runInShell: true);
        
        // Parse progress from stderr (FFmpeg outputs to stderr)
        process.stderr.transform(utf8.decoder).listen((data) {
          // Parse time= field for progress
-         // Example: time=00:01:23.45 or time=123.45
          final timeMatch = RegExp(r'time=(\d+):(\d+):(\d+)\.(\d+)').firstMatch(data);
          if (timeMatch != null) {
            final hours = int.parse(timeMatch.group(1)!);
@@ -392,11 +314,9 @@ class VideoExportHelper {
            onProgress?.call(msg, pct);
          }
          
-         // Also print to console for debugging
          print(data);
        });
        
-       // Wait for completion
        final exitCode = await process.exitCode;
        
        if (exitCode != 0) {
@@ -427,23 +347,8 @@ class VideoExportHelper {
 
     onProgress?.call('Concatenating ${videoPaths.length} videos...', null);
 
-    if (Platform.isAndroid || Platform.isIOS) {
-      final command = '-y -f concat -safe 0 -i "${listFile.path}" -c copy "$outputPath"';
-      
-      print('[FFMPEG KIT] Running: $command');
-      
-      final session = await FFmpegKit.execute(command);
-      final returnCode = await session.getReturnCode();
-      
-      try { await listFile.delete(); } catch (_) {}
-      
-      if (!ReturnCode.isSuccess(returnCode)) {
-        final logs = await session.getAllLogsAsString();
-        print('[FFMPEG KIT] Error: $logs');
-        throw Exception('FFmpeg concatenation error');
-      }
-    } else {
-      // Desktop: Search for ffmpeg robustly
+    if (true) {
+      // Use Process on all platforms
       final ffmpegPath = await FFmpegUtils.getFFmpegPath();
       
       print('[FFMPEG] Concatenating with: $ffmpegPath');
@@ -473,24 +378,8 @@ class VideoExportHelper {
   /// Get media duration in seconds using FFprobe
   /// FFprobe.exe is always in the same folder as the app executable
   static Future<double?> getMediaDuration(String filePath, {String? ffprobePath}) async {
-    if (Platform.isAndroid || Platform.isIOS) {
-      // Use FFprobeKit on mobile
-      try {
-        final session = await FFprobeKit.getMediaInformation(filePath);
-        final info = session.getMediaInformation();
-        
-        if (info != null) {
-          final durationStr = info.getDuration();
-          if (durationStr != null) {
-            return double.tryParse(durationStr);
-          }
-        }
-      } catch (e) {
-        print('[FFPROBE KIT] Error getting duration: $e');
-      }
-      return null;
-    } else {
-      // Desktop: Search for ffprobe robustly
+    if (true) {
+      // Use Process on all platforms
       try {
         final probePath = ffprobePath ?? await FFmpegUtils.getFFprobePath();
         
@@ -548,27 +437,8 @@ class VideoExportHelper {
 
   /// Get video dimensions (width, height)
   static Future<Map<String, int>?> getVideoDimensions(String filePath, {String? ffprobePath}) async {
-    if (Platform.isAndroid || Platform.isIOS) {
-       try {
-         final session = await FFprobeKit.getMediaInformation(filePath);
-         final info = session.getMediaInformation();
-         if (info != null) {
-            final streams = info.getStreams();
-            // Check streams is meant to be a Javascript array style or Java list?
-            // In Flutter ffmpeg_kit, getStreams returns List<StreamInformation>
-            for (final stream in streams) {
-               if (stream.getType() == 'video') {
-                  final w = stream.getWidth();
-                  final h = stream.getHeight();
-                  if (w != null && h != null) return {'width': w.toInt(), 'height': h.toInt()};
-               }
-            }
-         }
-       } catch (e) {
-         print('[FFPROBE KIT] Error getting dimensions: $e');
-       }
-    } else {
-       // Desktop: Search for ffprobe robustly
+    if (true) {
+       // Use Process on all platforms
        try {
         final probePath = ffprobePath ?? await FFmpegUtils.getFFprobePath();
         

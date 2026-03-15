@@ -1,11 +1,9 @@
 import 'dart:io';
 import 'dart:math';
 import 'package:path/path.dart' as path;
-import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter_new/ffprobe_kit.dart';
-import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 import '../../models/story/alignment_item.dart';
 import '../../models/story/story_audio_part.dart';
+import 'package:veo3_another/utils/ffmpeg_utils.dart';
 
 class StoryExportService {
   static const double maxAudioSpeedup = 1.50;
@@ -14,24 +12,14 @@ class StoryExportService {
   /// Optional log callback for UI display
   void Function(String message)? onLog;
 
-  /// Get FFmpeg path - on Android use FFmpegKit, on Windows use local folder
-  String _getFFmpegPath() {
-    if (Platform.isAndroid) {
-      return 'ffmpeg'; // Not used on Android - we use FFmpegKit
-    }
-    final exePath = Platform.resolvedExecutable;
-    final exeDir = File(exePath).parent.path;
-    return path.join(exeDir, 'ffmpeg.exe');
+  /// Get FFmpeg path using centralized FFmpegUtils
+  Future<String> _getFFmpegPath() async {
+    return await FFmpegUtils.getFFmpegPath();
   }
 
-  /// Get FFprobe path - same logic as FFmpeg
-  String _getFFprobePath() {
-    if (Platform.isAndroid) {
-      return 'ffprobe'; // Not used on Android - we use FFprobeKit
-    }
-    final exePath = Platform.resolvedExecutable;
-    final exeDir = File(exePath).parent.path;
-    return path.join(exeDir, 'ffprobe.exe');
+  /// Get FFprobe path using centralized FFmpegUtils
+  Future<String> _getFFprobePath() async {
+    return await FFmpegUtils.getFFprobePath();
   }
   
   void _log(String msg) {
@@ -39,34 +27,20 @@ class StoryExportService {
     onLog?.call(msg);
   }
   
-  /// Run FFmpeg command - uses FFmpegKit on Android, Process.run on Windows
+  /// Run FFmpeg command using Process.run on all platforms
   Future<({int exitCode, String stdout, String stderr})> _runFFmpeg(List<String> args) async {
-    if (Platform.isAndroid) {
-      final command = args.join(' ');
-      _log('[FFmpeg] Running: ffmpeg $command');
-      final session = await FFmpegKit.execute(command);
-      final returnCode = await session.getReturnCode();
-      final output = await session.getOutput() ?? '';
-      final logs = await session.getAllLogsAsString() ?? '';
-      
-      return (
-        exitCode: ReturnCode.isSuccess(returnCode) ? 0 : (returnCode?.getValue() ?? -1),
-        stdout: output,
-        stderr: logs,
-      );
-    } else {
-      _log('[FFmpeg] Running: ffmpeg ${args.join(' ')}');
-      // runInShell: false is critical - paths with spaces break when shell parsing is enabled
-      final result = await Process.run(_getFFmpegPath(), args, runInShell: false);
-      if (result.exitCode != 0) {
-        _log('[FFmpeg] Error (exit ${result.exitCode}): ${result.stderr.toString().split('\n').last}');
-      }
-      return (
-        exitCode: result.exitCode,
-        stdout: result.stdout.toString(),
-        stderr: result.stderr.toString(),
-      );
+    final ffmpegPath = await _getFFmpegPath();
+    _log('[FFmpeg] Running: $ffmpegPath ${args.join(' ')}');
+    // runInShell: false is critical - paths with spaces break when shell parsing is enabled
+    final result = await Process.run(ffmpegPath, args, runInShell: false);
+    if (result.exitCode != 0) {
+      _log('[FFmpeg] Error (exit ${result.exitCode}): ${result.stderr.toString().split('\n').last}');
     }
+    return (
+      exitCode: result.exitCode,
+      stdout: result.stdout.toString(),
+      stderr: result.stderr.toString(),
+    );
   }
 
   /// Get media duration using ffprobe (FFprobeKit on Android)
@@ -75,35 +49,12 @@ class StoryExportService {
     print('[DURATION] Platform.isAndroid = ${Platform.isAndroid}');
     
     try {
-      if (Platform.isAndroid) {
-        print('[DURATION] Using FFprobeKit...');
-        final session = await FFprobeKit.getMediaInformation(filePath);
-        final info = session.getMediaInformation();
-        if (info != null) {
-          final durationStr = info.getDuration();
-          print('[DURATION] FFprobeKit returned: $durationStr');
-          if (durationStr != null) {
-            return double.parse(durationStr);
-          }
-        }
-        // Try to get duration from stream info if format info fails
-        print('[DURATION] Format duration null, checking streams...');
-        final streams = session.getMediaInformation()?.getStreams();
-        if (streams != null && streams.isNotEmpty) {
-          for (var stream in streams) {
-            final streamDuration = stream.getAllProperties()?['duration'];
-            if (streamDuration != null) {
-              print('[DURATION] Got stream duration: $streamDuration');
-              return double.parse(streamDuration.toString());
-            }
-          }
-        }
-        throw Exception('Could not get duration from FFprobeKit');
-      }
+      {
       
-      print('[DURATION] Using Process.run (Windows)...');
+      final ffprobePath = await _getFFprobePath();
+      print('[DURATION] Using Process.run...');
       final result = await Process.run(
-        _getFFprobePath(),
+        ffprobePath,
         [
           '-v',
           'error',
@@ -131,18 +82,11 @@ class StoryExportService {
   /// Check if file has audio stream
   Future<bool> _hasAudioStream(String filePath) async {
     try {
-      if (Platform.isAndroid) {
-        final session = await FFprobeKit.getMediaInformation(filePath);
-        final info = session.getMediaInformation();
-        if (info != null) {
-          final streams = info.getStreams();
-          return streams.any((s) => s.getType() == 'audio');
-        }
-        return false;
-      }
+      {
       
+      final ffprobePath = await _getFFprobePath();
       final result = await Process.run(
-        _getFFprobePath(),
+        ffprobePath,
         [
           '-v', 'error',
           '-select_streams', 'a',
