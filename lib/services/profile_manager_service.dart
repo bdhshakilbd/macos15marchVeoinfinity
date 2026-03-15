@@ -8,6 +8,7 @@ import 'settings_service.dart';
 import 'playwright_browser_service.dart';
 import '../utils/browser_utils.dart';
 import '../utils/win32_api.dart';
+import '../utils/config.dart';
 
 /// Status of a Chrome profile/browser instance
 enum ProfileStatus {
@@ -675,26 +676,38 @@ class ProfileManagerService {
       );
       
       if (result['success'] != true) {
-        print('[ProfileManager] [${i + 1}/$count] [FAIL] Launch failed: ${result['error']}');
-        profile.status = ProfileStatus.error;
-        continue;
+        // On macOS, Playwright launch may fail due to sandbox — try launching Chrome independently
+        if (Platform.isMacOS) {
+          print('[ProfileManager] [${i + 1}/$count] Playwright launch failed, trying macOS independent launch...');
+          final macLaunched = await _launchChromeIndependentlyMacOS(profile);
+          if (!macLaunched) {
+            print('[ProfileManager] [${i + 1}/$count] [FAIL] macOS independent launch also failed');
+            profile.status = ProfileStatus.error;
+            continue;
+          }
+          print('[ProfileManager] [${i + 1}/$count] [OK] Chrome launched independently on macOS');
+        } else {
+          print('[ProfileManager] [${i + 1}/$count] [FAIL] Launch failed: ${result['error']}');
+          profile.status = ProfileStatus.error;
+          continue;
+        }
       }
       
       launchedCount++;
       profile.chromePid = result['pid'] as int?;
       print('[ProfileManager] [${i + 1}/$count] [OK] Browser opened');
       
-      // Quick connection + token check with 2 attempts, 8s interval
+      // Quick connection + token check with 2 attempts, 15s interval
       // If browser is logged in, it will get token on first or second try
       // If not logged in, just move on to next browser
       bool connected = false;
       String? token;
       
       const int maxAttempts = 2;
-      const int intervalSec = 8;
+      const int intervalSec = 15;
       
       for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-        // Wait 8s before each attempt (network idle time)
+        // Wait 15s before each attempt (network idle time)
         print('[ProfileManager] [${i + 1}/$count] Connection attempt $attempt/$maxAttempts (waiting ${intervalSec}s)...');
         await Future.delayed(Duration(seconds: intervalSec));
         
@@ -761,6 +774,62 @@ class ProfileManagerService {
     print('[ProfileManager] ========================================');
     
     return launchedCount;
+  }
+
+  /// macOS fallback: Launch Chrome independently using `open` command.
+  /// This avoids sandbox inheritance by starting Chrome as its own process.
+  Future<bool> _launchChromeIndependentlyMacOS(ChromeProfile profile) async {
+    try {
+      final chromePath = AppConfig.chromePath;
+      final port = profile.debugPort;
+      final profileDir = profile.profilePath;
+      
+      print('[ProfileManager] [macOS] Launching Chrome independently:');
+      print('[ProfileManager] [macOS]   Chrome: $chromePath');
+      print('[ProfileManager] [macOS]   Port: $port');
+      print('[ProfileManager] [macOS]   Profile: $profileDir');
+      
+      // Ensure profile directory exists
+      final dir = Directory(profileDir);
+      if (!dir.existsSync()) {
+        dir.createSync(recursive: true);
+      }
+      
+      // Use 'open' command which launches Chrome as an independent process.
+      // The -a flag specifies the app, --args passes arguments to Chrome.
+      final result = await Process.run('open', [
+        '-na', 'Google Chrome',
+        '--args',
+        '--remote-debugging-port=$port',
+        '--user-data-dir=$profileDir',
+        '--no-first-run',
+        '--no-default-browser-check',
+        '--disable-popup-blocking',
+        '--disable-translate',
+        '--disable-features=TranslateUI',
+        'https://labs.google/fx/tools/flow',
+      ]);
+      
+      if (result.exitCode != 0) {
+        print('[ProfileManager] [macOS] open command failed: ${result.stderr}');
+        return false;
+      }
+      
+      print('[ProfileManager] [macOS] Chrome launched, waiting for CDP on port $port...');
+      
+      // Wait for Chrome to be ready on the debug port
+      final ready = await _waitForChromeReady(port, maxAttempts: 10);
+      if (!ready) {
+        print('[ProfileManager] [macOS] Chrome did not become ready on port $port');
+        return false;
+      }
+      
+      print('[ProfileManager] [macOS] ✓ Chrome ready on port $port');
+      return true;
+    } catch (e) {
+      print('[ProfileManager] [macOS] Independent launch error: $e');
+      return false;
+    }
   }
 
   /// Close all connections and cleanup

@@ -2209,28 +2209,289 @@ class DesktopGenerator {
   }
 
   /// Get access token via Playwright server (no CDP)
+  /// Falls back to direct CDP if Playwright fails (macOS fix)
   Future<String?> getAccessToken() async {
     final pw = PlaywrightBrowserService();
-    return await pw.getAccessToken(port: debugPort);
+    
+    // Try Playwright server first
+    try {
+      final token = await pw.getAccessToken(port: debugPort);
+      if (token != null && token.isNotEmpty) {
+        print('[Desktop] ✓ Access token via PLAYWRIGHT server (port $debugPort)');
+        return token;
+      }
+    } catch (e) {
+      print('[Desktop] Playwright getAccessToken failed: $e');
+    }
+    
+    // Fallback: direct CDP token fetch (works when Chrome is running but Playwright isn't connected)
+    print('[Desktop] Trying direct CDP token fetch on port $debugPort...');
+    return await _getAccessTokenViaCDP();
+  }
+
+  /// Direct CDP fallback for token fetching
+  Future<String?> _getAccessTokenViaCDP() async {
+    try {
+      // Get CDP targets
+      final client = HttpClient();
+      client.connectionTimeout = const Duration(seconds: 3);
+      final req = await client.getUrl(Uri.parse('http://localhost:$debugPort/json'));
+      final resp = await req.close();
+      final body = await resp.transform(utf8.decoder).join();
+      final targets = jsonDecode(body) as List;
+      client.close();
+
+      // Find Flow/Google Labs tab
+      Map<String, dynamic>? flowTab;
+      for (final t in targets) {
+        if (t is Map && t['type'] == 'page') {
+          final url = (t['url'] ?? '').toString();
+          if (url.contains('labs.google') || url.contains('aisandbox') || url.contains('accounts.google')) {
+            flowTab = Map<String, dynamic>.from(t);
+            break;
+          }
+        }
+      }
+      
+      // If no Flow tab, try any page tab
+      flowTab ??= targets.firstWhere(
+        (t) => t is Map && t['type'] == 'page',
+        orElse: () => null,
+      ) as Map<String, dynamic>?;
+
+      if (flowTab == null) {
+        print('[Desktop] [CDP] No page tabs found');
+        return null;
+      }
+
+      final wsUrl = flowTab['webSocketDebuggerUrl'] as String?;
+      if (wsUrl == null) {
+        print('[Desktop] [CDP] No webSocketDebuggerUrl');
+        return null;
+      }
+
+      // Connect via WebSocket and evaluate JS
+      final ws = await WebSocket.connect(wsUrl);
+      final completer = Completer<String?>();
+
+      ws.listen((data) {
+        try {
+          final result = jsonDecode(data);
+          if (result['id'] == 1) {
+            final value = result?['result']?['result']?['value'];
+            if (!completer.isCompleted) completer.complete(value?.toString());
+          }
+        } catch (_) {
+          if (!completer.isCompleted) completer.complete(null);
+        }
+      });
+
+      // Try multiple token sources
+      ws.add(jsonEncode({
+        'id': 1,
+        'method': 'Runtime.evaluate',
+        'params': {
+          'expression': '''
+            (function() {
+              // Try window.__NEXT_DATA__ or similar token stores
+              try {
+                var keys = Object.keys(localStorage);
+                for (var i = 0; i < keys.length; i++) {
+                  var k = keys[i];
+                  if (k.indexOf('access_token') >= 0 || k.indexOf('accessToken') >= 0 || k.indexOf('token') >= 0) {
+                    var v = localStorage.getItem(k);
+                    if (v && v.length > 50 && v.startsWith('ya29.')) return v;
+                  }
+                }
+              } catch(e) {}
+              // Try cookie-based token
+              try {
+                var cookies = document.cookie.split(';');
+                for (var i = 0; i < cookies.length; i++) {
+                  var c = cookies[i].trim();
+                  if (c.indexOf('access_token=') === 0) return c.substring(13);
+                }
+              } catch(e) {}
+              // Try __WIRED_TOKEN__ global (Google internal)
+              try { if (window.__WIRED_TOKEN__) return window.__WIRED_TOKEN__; } catch(e) {}
+              // Try finding token in page scripts/window objects
+              try {
+                var el = document.querySelector('script[nonce]');
+                if (el && el.textContent) {
+                  var match = el.textContent.match(/ya29\\.[A-Za-z0-9_-]+/);
+                  if (match) return match[0];
+                }
+              } catch(e) {}
+              // Try all script elements for token patterns
+              try {
+                var scripts = document.querySelectorAll('script');
+                for (var i = 0; i < scripts.length; i++) {
+                  var text = scripts[i].textContent || '';
+                  var match = text.match(/ya29\\.[A-Za-z0-9_-]{30,}/);
+                  if (match) return match[0];
+                }
+              } catch(e) {}
+              return null;
+            })()
+          ''',
+          'returnByValue': true,
+        }
+      }));
+
+      final token = await completer.future.timeout(
+        const Duration(seconds: 8),
+        onTimeout: () => null,
+      );
+      await ws.close();
+
+      if (token != null && token.isNotEmpty && token != 'null') {
+        print('[Desktop] [CDP] ✓ Got token via direct CDP: ${token.substring(0, 20)}...');
+        return token;
+      }
+      
+      print('[Desktop] [CDP] No token found via direct CDP');
+      return null;
+    } catch (e) {
+      print('[Desktop] [CDP] Direct token fetch error: $e');
+      return null;
+    }
   }
 
   /// Get reCAPTCHA token via Playwright server (no CDP) — for VIDEO generation
+  /// Falls back to direct CDP if Playwright fails (macOS fix)
   Future<String?> getRecaptchaToken() async {
     final pw = PlaywrightBrowserService();
-    return await pw.getRecaptchaToken(port: debugPort);
+    
+    // Try Playwright server first
+    try {
+      final token = await pw.getRecaptchaToken(port: debugPort);
+      if (token != null && token.isNotEmpty) {
+        print('[Desktop] ✓ reCAPTCHA token via PLAYWRIGHT server (port $debugPort)');
+        return token;
+      }
+    } catch (e) {
+      print('[Desktop] Playwright getRecaptchaToken failed: $e');
+    }
+    
+    // Fallback: direct CDP reCAPTCHA fetch
+    print('[Desktop] Trying direct CDP reCAPTCHA fetch on port $debugPort...');
+    return await _executeJsViaCDP('''
+      (async () => {
+        try {
+          if (typeof grecaptcha !== 'undefined' && grecaptcha.enterprise) {
+            const token = await grecaptcha.enterprise.execute('6LfMJCkqAAAAAFCm-aoYFnKOFyFfAjAdGBsVHzTm', {action: 'GENERATE_VIDEO'});
+            return token;
+          }
+          return null;
+        } catch(e) { return null; }
+      })()
+    ''');
   }
   
   /// Get reCAPTCHA token for IMAGE generation via Playwright server
+  /// Falls back to direct CDP if Playwright fails (macOS fix)
   Future<String?> getImageRecaptchaToken() async {
     final pw = PlaywrightBrowserService();
-    return await pw.getImageRecaptchaToken(port: debugPort);
+    
+    try {
+      final token = await pw.getImageRecaptchaToken(port: debugPort);
+      if (token != null && token.isNotEmpty) {
+        print('[Desktop] ✓ Image reCAPTCHA token via PLAYWRIGHT server (port $debugPort)');
+        return token;
+      }
+    } catch (e) {
+      print('[Desktop] Playwright getImageRecaptchaToken failed: $e');
+    }
+    
+    // Fallback: direct CDP
+    print('[Desktop] Trying direct CDP image reCAPTCHA fetch on port $debugPort...');
+    return await _executeJsViaCDP('''
+      (async () => {
+        try {
+          if (typeof grecaptcha !== 'undefined' && grecaptcha.enterprise) {
+            const token = await grecaptcha.enterprise.execute('6LfMJCkqAAAAAFCm-aoYFnKOFyFfAjAdGBsVHzTm', {action: 'IMAGE_GENERATION'});
+            return token;
+          }
+          return null;
+        } catch(e) { return null; }
+      })()
+    ''');
   }
   
   /// Execute JavaScript in the browser via Playwright server
-  /// This replaces direct CDP Runtime.evaluate calls.
+  /// Falls back to direct CDP if Playwright fails (macOS fix)
   Future<dynamic> executeJs(String expression) async {
     final pw = PlaywrightBrowserService();
-    return await pw.executeJs(port: debugPort, expression: expression);
+    try {
+      final result = await pw.executeJs(port: debugPort, expression: expression);
+      if (result != null) {
+        print('[Desktop] ✓ JS executed via PLAYWRIGHT server (port $debugPort)');
+        return result;
+      }
+    } catch (e) {
+      print('[Desktop] Playwright executeJs failed: $e');
+    }
+    
+    // Fallback: direct CDP
+    return await _executeJsViaCDP(expression);
+  }
+
+  /// Generic direct CDP JS execution fallback
+  Future<dynamic> _executeJsViaCDP(String expression) async {
+    try {
+      final client = HttpClient();
+      client.connectionTimeout = const Duration(seconds: 3);
+      final req = await client.getUrl(Uri.parse('http://localhost:$debugPort/json'));
+      final resp = await req.close();
+      final body = await resp.transform(utf8.decoder).join();
+      final targets = jsonDecode(body) as List;
+      client.close();
+
+      // Find a page tab
+      final tab = targets.firstWhere(
+        (t) => t is Map && t['type'] == 'page',
+        orElse: () => null,
+      );
+      if (tab == null) return null;
+
+      final wsUrl = tab['webSocketDebuggerUrl'] as String?;
+      if (wsUrl == null) return null;
+
+      final ws = await WebSocket.connect(wsUrl);
+      final completer = Completer<dynamic>();
+
+      ws.listen((data) {
+        try {
+          final result = jsonDecode(data);
+          if (result['id'] == 1) {
+            final value = result?['result']?['result']?['value'];
+            if (!completer.isCompleted) completer.complete(value);
+          }
+        } catch (_) {
+          if (!completer.isCompleted) completer.complete(null);
+        }
+      });
+
+      ws.add(jsonEncode({
+        'id': 1,
+        'method': 'Runtime.evaluate',
+        'params': {
+          'expression': expression,
+          'returnByValue': true,
+          'awaitPromise': true,
+        }
+      }));
+
+      final result = await completer.future.timeout(
+        const Duration(seconds: 15),
+        onTimeout: () => null,
+      );
+      await ws.close();
+      return result;
+    } catch (e) {
+      print('[Desktop] [CDP] executeJs fallback error: $e');
+      return null;
+    }
   }
 
   Future<String> getCurrentUrl() async {
