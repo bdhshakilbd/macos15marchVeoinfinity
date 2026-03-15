@@ -3656,11 +3656,15 @@ OUTPUT JSON FORMAT:
                                     shape: const CircleBorder(),
                                     child: InkWell(
                                       onTap: () {
-                                        VideoPlayerDialog.show(
-                                          context,
-                                          project['exportedVideoPath'],
-                                          title: project['name'] ?? 'Reel Video',
-                                        );
+                                        if (Platform.isMacOS) {
+                                          Process.run('open', [project['exportedVideoPath']]);
+                                        } else {
+                                          VideoPlayerDialog.show(
+                                            context,
+                                            project['exportedVideoPath'],
+                                            title: project['name'] ?? 'Reel Video',
+                                          );
+                                        }
                                       },
                                       customBorder: const CircleBorder(),
                                       child: const Padding(

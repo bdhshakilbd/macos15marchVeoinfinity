@@ -13645,8 +13645,11 @@ class _BulkVideoGeneratorPageState extends State<BulkVideoGeneratorPage> with Ti
           SnackBar(content: Text('Could not open video: ${result.message}')),
         );
       }
+    } else if (Platform.isMacOS) {
+      // macOS: Use system player (QuickTime/VLC)
+      await Process.run('open', [scene.videoPath!]);
     } else {
-      // Desktop: Use internal video player
+      // Windows/Linux: Use internal video player
       VideoPlayerDialog.show(
         context, 
         scene.videoPath!,

@@ -9543,10 +9543,14 @@ Extract all characters, create character IDs (name_outfit_001 format), generate 
                                   icon: const Icon(Icons.fullscreen, color: Colors.white, size: 28),
                                   onPressed: () {
                                     if (_playingVideoPath != null) {
-                                      showDialog(
-                                        context: context,
-                                        builder: (context) => _VideoPlayerDialog(videoPath: _playingVideoPath!),
-                                      );
+                                      if (Platform.isMacOS) {
+                                        Process.run('open', [_playingVideoPath!]);
+                                      } else {
+                                        showDialog(
+                                          context: context,
+                                          builder: (context) => _VideoPlayerDialog(videoPath: _playingVideoPath!),
+                                        );
+                                      }
                                     }
                                   },
                                   tooltip: 'Fullscreen',
