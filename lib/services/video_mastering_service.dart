@@ -12,11 +12,7 @@ import '../models/video_mastering/video_project.dart';
 import '../widgets/video_mastering/mastering_console_widget.dart';
 import 'package:veo3_another/utils/ffmpeg_utils.dart'; // Centralized FFmpeg path resolution
 
-// Mobile FFmpeg imports (conditionally used)
-import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter_new/ffprobe_kit.dart';
-import 'package:ffmpeg_kit_flutter_new/return_code.dart';
-import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit_config.dart';
+// FFmpeg is used via Process.run on all platforms (desktop + mobile)
 
 /// Export task information
 class ExportTask {
@@ -197,39 +193,7 @@ class VideoMasteringService {
   /// Run FFmpeg command (handles both mobile and desktop)
   /// [expectedDuration] - Optional: the expected output duration in seconds for accurate progress calculation
   Future<bool> _runFFmpeg(List<String> args, {Function(double time, {double? percent, double? fps, double? speed, String? eta})? onProgress, String? taskId, double? expectedDuration}) async {
-    if (Platform.isAndroid || Platform.isIOS) {
-      // Use FFmpegKit for mobile
-      // Auto-quote arguments with spaces or special chars if they aren't already quoted
-      final command = args.map((a) {
-        if ((a.contains(' ') || a.contains(';') || a.contains('[') || a.contains(']')) && 
-            !a.startsWith('"') && !a.startsWith("'")) {
-          return '"$a"';
-        }
-        return a;
-      }).join(' ');
-      
-      print('[FFMPEG] Running: $command');
-      
-      if (onProgress != null) {
-        FFmpegKitConfig.enableStatisticsCallback((statistics) {
-          final time = statistics.getTime();
-          if (time > 0) {
-            onProgress(time / 1000.0);
-          }
-        });
-      }
-      
-      final session = await FFmpegKit.execute(command);
-      final returnCode = await session.getReturnCode();
-      
-      if (ReturnCode.isSuccess(returnCode)) {
-        return true;
-      } else {
-        final output = await session.getOutput();
-        print('[FFMPEG] Error: $output');
-        return false;
-      }
-    } else {
+    {
       // Desktop: Use Process.start for real-time progress monitoring
       final ffmpegPath = await _getFFmpegPath();
       // Build a fully-quoted command string for easy copy/paste into CMD
@@ -409,41 +373,7 @@ class VideoMasteringService {
   /// Get video information
   Future<VideoInfo?> getVideoInfo(String videoPath) async {
     try {
-      if (Platform.isAndroid || Platform.isIOS) {
-        final session = await FFprobeKit.getMediaInformation(videoPath);
-        final info = session.getMediaInformation();
-        
-        if (info == null) return null;
-        
-        final streams = info.getStreams();
-        Map<String, dynamic>? videoStream;
-        bool hasAudio = false;
-        
-        for (var stream in streams) {
-          final props = stream.getAllProperties();
-          if (props?['codec_type'] == 'video' && videoStream == null) {
-            videoStream = Map<String, dynamic>.from(props!);
-          }
-          if (props?['codec_type'] == 'audio') {
-            hasAudio = true;
-          }
-        }
-        
-        if (videoStream == null) return null;
-        
-        final durationStr = info.getDuration() ?? '0';
-        final duration = double.tryParse(durationStr) ?? 0;
-        
-        return VideoInfo(
-          duration: duration,
-          width: videoStream['width'] ?? 0,
-          height: videoStream['height'] ?? 0,
-          fps: _parseFps(videoStream['r_frame_rate'] ?? '30/1'),
-          codec: videoStream['codec_name'] ?? 'unknown',
-          bitrate: int.tryParse(info.getBitrate() ?? '0') ?? 0,
-          hasAudio: hasAudio,
-        );
-      } else {
+      {
         // Desktop: Use ffprobe
         final ffprobePath = await _getFFprobePath();
         final result = await Process.run(ffprobePath, [
@@ -493,32 +423,7 @@ class VideoMasteringService {
   /// Get audio information
   Future<AudioInfo?> getAudioInfo(String audioPath) async {
     try {
-      if (Platform.isAndroid || Platform.isIOS) {
-        final session = await FFprobeKit.getMediaInformation(audioPath);
-        final info = session.getMediaInformation();
-        
-        if (info == null) return null;
-        
-        final streams = info.getStreams();
-        Map<String, dynamic>? audioStream;
-        
-        for (var stream in streams) {
-          final props = stream.getAllProperties();
-          if (props?['codec_type'] == 'audio') {
-            audioStream = Map<String, dynamic>.from(props!);
-            break;
-          }
-        }
-        
-        if (audioStream == null) return null;
-        
-        return AudioInfo(
-          duration: double.tryParse(info.getDuration() ?? '0') ?? 0,
-          sampleRate: audioStream['sample_rate'] ?? 44100,
-          channels: audioStream['channels'] ?? 2,
-          codec: audioStream['codec_name'] ?? 'unknown',
-        );
-      } else {
+      {
         final ffprobePath = await _getFFprobePath();
         final result = await Process.run(ffprobePath, [
           '-v', 'quiet',
