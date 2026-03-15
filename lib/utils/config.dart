@@ -10,21 +10,49 @@ class AppConfig {
   // static Future<String> get ffmpegPath => _getFFmpegPath(); // Unused, commented out
   static const int debugPort = 9222;
 
-  /// Get profiles directory - uses 'profiles' folder in app directory
+  /// Get a writable app data directory for storing config, cache, keys, etc.
+  /// - Windows: same as exe directory (portable app)
+  /// - macOS: ~/Library/Application Support/VEO3_Infinity/ (writable)
+  /// - Android/iOS: handled separately via path_provider
+  static String getAppDataDir() {
+    if (Platform.isMacOS) {
+      final home = Platform.environment['HOME'] ?? '/tmp';
+      return '$home/Library/Application Support/VEO3_Infinity';
+    }
+    // Windows: next to executable
+    return path.dirname(Platform.resolvedExecutable);
+  }
+
+  /// Get profiles directory
+  /// - Windows: uses 'profiles' folder next to executable
+  /// - macOS: uses ~/Library/Application Support/VEO3_Infinity/profiles (writable)
+  /// - Android/iOS: temporary path, overridden by main.dart
   static String _getProfilesDir() {
-    // On Android/iOS, return a temporary path that will be overridden by main.dart
-    // On Windows, use the executable directory
     if (Platform.isAndroid || Platform.isIOS) {
-      // Return a safe default - this will be overridden in _initializeOutputFolder
-      return '/data/local/tmp/profiles'; // Temporary, will be replaced
+      return '/data/local/tmp/profiles'; // Will be overridden in _initializeOutputFolder
     }
     
+    if (Platform.isMacOS) {
+      // macOS .app bundle is READ-ONLY (App Translocation).
+      // Use ~/Library/Application Support/ which is always writable.
+      final home = Platform.environment['HOME'] ?? '/tmp';
+      return '$home/Library/Application Support/VEO3_Infinity/profiles';
+    }
+    
+    // Windows: next to executable
     final exePath = Platform.resolvedExecutable;
     final exeDir = path.dirname(exePath);
     return path.join(exeDir, 'profiles');
   }
 
   static String _getChromePath() {
+    if (Platform.isMacOS) {
+      const macPath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+      if (File(macPath).existsSync()) return macPath;
+      return macPath; // Default on mac
+    }
+    
+    // Windows paths
     const path1 = r'C:\Program Files (x86)\Google\Chrome\Application\chrome.exe';
     const path2 = r'C:\Program Files\Google\Chrome\Application\chrome.exe';
     

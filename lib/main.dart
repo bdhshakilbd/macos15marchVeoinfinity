@@ -1652,10 +1652,12 @@ class _BulkVideoGeneratorPageState extends State<BulkVideoGeneratorPage> with Ti
       final docsDir = await getApplicationDocumentsDirectory();
       return path.join(docsDir.path, 'veo_preferences.json');
     } else {
-      // Desktop
-      final exePath = Platform.resolvedExecutable;
-      final exeDir = path.dirname(exePath);
-      return path.join(exeDir, 'veo_preferences.json');
+      // Desktop (Windows + macOS)
+      final appDataDir = AppConfig.getAppDataDir();
+      // Ensure directory exists on macOS
+      final dir = Directory(appDataDir);
+      if (!dir.existsSync()) dir.createSync(recursive: true);
+      return path.join(appDataDir, 'veo_preferences.json');
     }
   }
   
@@ -14173,7 +14175,22 @@ class _BulkVideoGeneratorPageState extends State<BulkVideoGeneratorPage> with Ti
 
     try {
       print('[UI] Connecting to $count opened browsers...');
+      print('[UI] Platform: ${Platform.operatingSystem}, profilesDir: ${AppConfig.profilesDir}');
+      print('[UI] Chrome path: ${AppConfig.chromePath}');
+      print('[UI] Base debug port: ${AppConfig.debugPort}');
       
+      // Initialize profile manager if not yet ready (macOS fix)
+      if (_profileManager == null) {
+        print('[UI] [macOS] _profileManager was null — auto-initializing...');
+        _profileManager = ProfileManagerService(
+          profilesDirectory: AppConfig.profilesDir,
+          baseDebugPort: AppConfig.debugPort,
+        );
+        _loginService = MultiProfileLoginService(profileManager: _profileManager!);
+        print('[UI] [macOS] ✓ ProfileManager initialized: dir=${AppConfig.profilesDir}, port=${AppConfig.debugPort}');
+      }
+      
+      print('[UI] Calling connectToOpenProfiles($count)...');
       final connectedCount = await _profileManager!.connectToOpenProfiles(count);
       
       // Reload profiles dropdown to show newly created profiles
@@ -14218,17 +14235,22 @@ class _BulkVideoGeneratorPageState extends State<BulkVideoGeneratorPage> with Ti
   Future<void> _handleOpenWithoutLogin(int count) async {
     try {
       print('[UI] Opening $count browsers (no auto-login)...');
+      print('[UI] Platform: ${Platform.operatingSystem}, headless: $_useHeadlessMode');
+      print('[UI] profilesDir: ${AppConfig.profilesDir}');
+      print('[UI] chromePath: ${AppConfig.chromePath}');
       
       // Initialize profile manager if not yet ready
       if (_profileManager == null) {
+        print('[UI] [macOS] _profileManager was null — auto-initializing...');
         _profileManager = ProfileManagerService(
           profilesDirectory: AppConfig.profilesDir,
           baseDebugPort: AppConfig.debugPort,
         );
         _loginService = MultiProfileLoginService(profileManager: _profileManager!);
-        print('[UI] Auto-initialized ProfileManager');
+        print('[UI] [macOS] ✓ ProfileManager initialized: dir=${AppConfig.profilesDir}, port=${AppConfig.debugPort}');
       }
       
+      print('[UI] Calling launchProfilesWithoutLogin($count, headless: $_useHeadlessMode)...');
       final launchedCount = await _profileManager!.launchProfilesWithoutLogin(count, headless: _useHeadlessMode);
       
       // Reload profiles dropdown to show newly created profiles
@@ -14236,8 +14258,9 @@ class _BulkVideoGeneratorPageState extends State<BulkVideoGeneratorPage> with Ti
       
       setState(() {});
       print('[UI] [OK] Opened $launchedCount/$count browsers');
-    } catch (e) {
+    } catch (e, stackTrace) {
       print('[UI] [FAIL] Open browsers failed: $e');
+      print('[UI] [FAIL] Stack trace: $stackTrace');
       rethrow;
     }
   }

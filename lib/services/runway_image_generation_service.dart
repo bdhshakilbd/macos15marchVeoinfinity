@@ -14,6 +14,7 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
+import 'package:veo3_another/utils/config.dart';
 
 class RunwayImageGenerationService {
   static final RunwayImageGenerationService _instance = RunwayImageGenerationService._internal();
@@ -194,8 +195,8 @@ class RunwayImageGenerationService {
 
   /// Path to the persistent cache file
   static String get _cacheFilePath {
-    final exeDir = File(Platform.resolvedExecutable).parent.path;
-    return '$exeDir${Platform.pathSeparator}RunwayML${Platform.pathSeparator}runway_ref_cache.json';
+    final appDataDir = AppConfig.getAppDataDir();
+    return '$appDataDir${Platform.pathSeparator}RunwayML${Platform.pathSeparator}runway_ref_cache.json';
   }
 
   /// Compute a content hash for file bytes (fast: uses size + sample bytes)

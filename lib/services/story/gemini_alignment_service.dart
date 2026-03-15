@@ -9,6 +9,7 @@ import '../../models/story/story_audio_part.dart';
 import '../../models/story/story_audio_state.dart'; // Added for ReelTemplate
 import '../../models/story/alignment_item.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
+import 'package:veo3_another/utils/config.dart';
 
 class GeminiAlignmentService {
   List<String> _apiKeys = [];
@@ -28,9 +29,9 @@ class GeminiAlignmentService {
         final dir = await getApplicationDocumentsDirectory();
         keysFile = File(path.join(dir.path, 'gemini_api_keys.txt'));
       } else {
-        final exePath = Platform.resolvedExecutable;
-        final exeDir = File(exePath).parent.path;
-        keysFile = File(path.join(exeDir, 'gemini_api_keys.txt'));
+        // Desktop: use writable app data directory
+        final appDataDir = AppConfig.getAppDataDir();
+        keysFile = File(path.join(appDataDir, 'gemini_api_keys.txt'));
       }
 
       if (!await keysFile.exists()) {

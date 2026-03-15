@@ -5,6 +5,8 @@ import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import '../gemini_key_service.dart';
+import 'package:veo3_another/utils/config.dart';
+import 'package:veo3_another/utils/ffmpeg_utils.dart';
 
 /// Gemini TTS Service using Google's Generative Language API
 class GeminiTtsService {
@@ -24,9 +26,9 @@ class GeminiTtsService {
         final dir = await getApplicationDocumentsDirectory();
         keysFile = File(path.join(dir.path, 'gemini_api_keys.txt'));
       } else {
-        final exePath = Platform.resolvedExecutable;
-        final exeDir = File(exePath).parent.path;
-        keysFile = File(path.join(exeDir, 'gemini_api_keys.txt'));
+        // Desktop: use writable app data directory
+        final appDataDir = AppConfig.getAppDataDir();
+        keysFile = File(path.join(appDataDir, 'gemini_api_keys.txt'));
       }
 
       if (!await keysFile.exists()) {
@@ -239,11 +241,9 @@ class GeminiTtsService {
     
     // Convert to 44.1kHz stereo WAV for Windows MediaEngine compatibility
     // MediaEngine fails on 24kHz mono with "No suitable transform" error
-    if (Platform.isWindows) {
+    if (Platform.isWindows || Platform.isMacOS) {
       try {
-        final exePath = Platform.resolvedExecutable;
-        final exeDir = File(exePath).parent.path;
-        final ffmpegPath = path.join(exeDir, 'ffmpeg.exe');
+        final ffmpegPath = await FFmpegUtils.getFFmpegPath();
         final tempPath = '${file.path}.tmp.wav';
         
         final result = await Process.run(ffmpegPath, [
@@ -279,10 +279,8 @@ class GeminiTtsService {
   /// Get audio duration using ffprobe
   Future<double?> getDuration(String audioPath) async {
     try {
-      // Get ffprobe from current folder
-      final exePath = Platform.resolvedExecutable;
-      final exeDir = File(exePath).parent.path;
-      final ffprobePath = path.join(exeDir, 'ffprobe.exe');
+      // Get ffprobe path (cross-platform)
+      final ffprobePath = await FFmpegUtils.getFFprobePath();
       
       final result = await Process.run(
         ffprobePath,

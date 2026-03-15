@@ -1678,7 +1678,10 @@ class _StoryAudioScreenState extends State<StoryAudioScreen> {
        return File(path.join(dir.path, 'gemini_api_keys.txt'));
     }
     final exePath = Platform.resolvedExecutable;
-    return File(path.join(File(exePath).parent.path, 'gemini_api_keys.txt'));
+    final appDataDir = AppConfig.getAppDataDir();
+    final dir = Directory(appDataDir);
+    if (!dir.existsSync()) dir.createSync(recursive: true);
+    return File(path.join(appDataDir, 'gemini_api_keys.txt'));
   }
 
   /// Load API keys from file

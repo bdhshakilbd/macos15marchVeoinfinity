@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:path/path.dart' as path;
+import 'package:veo3_another/utils/config.dart';
 
 /// App-wide Theme Provider with Dark/Light mode support
 /// Inspired by Antigravity's sleek dark theme aesthetic
@@ -211,9 +212,10 @@ class ThemeProvider extends ChangeNotifier {
 
   Future<void> initialize() async {
     try {
-      final exePath = Platform.resolvedExecutable;
-      final exeDir = path.dirname(exePath);
-      _prefsPath = path.join(exeDir, 'theme_preferences.json');
+      final appDataDir = AppConfig.getAppDataDir();
+      final dir = Directory(appDataDir);
+      if (!dir.existsSync()) dir.createSync(recursive: true);
+      _prefsPath = path.join(appDataDir, 'theme_preferences.json');
       
       final file = File(_prefsPath!);
       if (await file.exists()) {
