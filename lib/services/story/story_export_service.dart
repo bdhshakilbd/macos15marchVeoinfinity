@@ -49,8 +49,6 @@ class StoryExportService {
     print('[DURATION] Platform.isAndroid = ${Platform.isAndroid}');
     
     try {
-      {
-      
       final ffprobePath = await _getFFprobePath();
       print('[DURATION] Using Process.run...');
       final result = await Process.run(
@@ -82,8 +80,6 @@ class StoryExportService {
   /// Check if file has audio stream
   Future<bool> _hasAudioStream(String filePath) async {
     try {
-      {
-      
       final ffprobePath = await _getFFprobePath();
       final result = await Process.run(
         ffprobePath,
