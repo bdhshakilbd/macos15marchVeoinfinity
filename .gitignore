@@ -1,0 +1,38 @@
+# Build outputs
+build/
+.dart_tool/
+.packages
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Flutter generated
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Python (not needed for macOS)
+*.py
+__pycache__/
+.venv/
+*.spec
+
+# Node  
+playwright_server/node_modules/
+playwright_server/package-lock.json
+
+# Windows only
+*.exe
+*.bat
+*.ps1
+
+# Temp/debug files
+*.log
+*.txt
+*.rar
+*.zip
