@@ -606,12 +606,8 @@ class _ProfileManagerWidgetState extends State<ProfileManagerWidget> {
     }
   }
 
-  // Connect to already-opened browsers
+  // Connect to already-opened browsers (uses CDP ports — no Chrome path needed)
   Future<void> _handleConnectOpened() async {
-    // Check Chrome is available before connecting
-    final chromeOk = await _ensureChromeAvailable();
-    if (!chromeOk) return;
-    
     setState(() {
       _isProcessing = true;
       _statusMessage = 'Connecting to $_profileCount opened browsers...';
