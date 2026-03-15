@@ -14219,6 +14219,16 @@ class _BulkVideoGeneratorPageState extends State<BulkVideoGeneratorPage> with Ti
     try {
       print('[UI] Opening $count browsers (no auto-login)...');
       
+      // Initialize profile manager if not yet ready
+      if (_profileManager == null) {
+        _profileManager = ProfileManagerService(
+          profilesDirectory: AppConfig.profilesDir,
+          baseDebugPort: AppConfig.debugPort,
+        );
+        _loginService = MultiProfileLoginService(profileManager: _profileManager!);
+        print('[UI] Auto-initialized ProfileManager');
+      }
+      
       final launchedCount = await _profileManager!.launchProfilesWithoutLogin(count, headless: _useHeadlessMode);
       
       // Reload profiles dropdown to show newly created profiles
