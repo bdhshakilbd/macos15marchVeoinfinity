@@ -1,7 +1,7 @@
 import Cocoa
 import FlutterMacOS
 
-class MainFlutterWindow: NSWindow {
+class MainFlutterWindow: NSWindow, NSWindowDelegate {
   override func awakeFromNib() {
     let flutterViewController = FlutterViewController()
     
@@ -16,9 +16,17 @@ class MainFlutterWindow: NSWindow {
     self.contentViewController = flutterViewController
     self.setFrame(newFrame, display: true)
     self.minSize = NSSize(width: 800, height: 600)
+    
+    // Set delegate so we can handle window close
+    self.delegate = self
 
     RegisterGeneratedPlugins(registry: flutterViewController)
 
     super.awakeFromNib()
+  }
+  
+  // When user clicks the red X close button, terminate the app
+  func windowWillClose(_ notification: Notification) {
+    NSApplication.shared.terminate(self)
   }
 }
