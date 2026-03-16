@@ -89,36 +89,62 @@ workflows:
         script: |
           APP_PATH="build/macos/Build/Products/Release/veo3_another.app"
           MACOS_DIR="$APP_PATH/Contents/MacOS"
+          TMPDIR_FF="/tmp/ffmpeg_bundle"
+          mkdir -p "$TMPDIR_FF"
           
-          echo "Downloading FFmpeg static binary for macOS..."
-          # Install ffmpeg via Homebrew (reliable on Codemagic M1 runners)
-          brew install ffmpeg || true
+          echo "=== Downloading static FFmpeg binaries for macOS ==="
           
-          # Copy the Homebrew ffmpeg and ffprobe into the app bundle
-          BREW_FFMPEG=$(which ffmpeg)
-          BREW_FFPROBE=$(which ffprobe)
+          # Install p7zip for extracting 7z archives
+          brew install p7zip 2>/dev/null || true
           
-          if [ -f "$BREW_FFMPEG" ]; then
-            cp "$BREW_FFMPEG" "$MACOS_DIR/ffmpeg"
-            chmod +x "$MACOS_DIR/ffmpeg"
-            echo "✅ Bundled ffmpeg from: $BREW_FFMPEG"
+          # Download static ffmpeg from evermeet.cx (universal/ARM64 static builds)
+          echo "Downloading ffmpeg..."
+          curl -L -o "$TMPDIR_FF/ffmpeg.7z" "https://evermeet.cx/ffmpeg/getrelease/7z" || true
+          
+          echo "Downloading ffprobe..."
+          curl -L -o "$TMPDIR_FF/ffprobe.7z" "https://evermeet.cx/ffmpeg/getrelease/ffprobe/7z" || true
+          
+          # Extract and copy ffmpeg
+          if [ -f "$TMPDIR_FF/ffmpeg.7z" ] && [ -s "$TMPDIR_FF/ffmpeg.7z" ]; then
+            cd "$TMPDIR_FF"
+            7z x -y ffmpeg.7z
+            if [ -f "ffmpeg" ]; then
+              cp ffmpeg "$MACOS_DIR/ffmpeg"
+              chmod +x "$MACOS_DIR/ffmpeg"
+              FFMPEG_SIZE=$(ls -lh "$MACOS_DIR/ffmpeg" | awk '{print $5}')
+              echo "✅ Bundled ffmpeg (static): $FFMPEG_SIZE"
+            else
+              echo "❌ ffmpeg not found after extraction"
+              ls -la "$TMPDIR_FF/"
+            fi
           else
-            echo "❌ ffmpeg not found after brew install"
+            echo "❌ ffmpeg download failed or empty"
           fi
           
-          if [ -f "$BREW_FFPROBE" ]; then
-            cp "$BREW_FFPROBE" "$MACOS_DIR/ffprobe"
-            chmod +x "$MACOS_DIR/ffprobe"
-            echo "✅ Bundled ffprobe from: $BREW_FFPROBE"
+          # Extract and copy ffprobe
+          if [ -f "$TMPDIR_FF/ffprobe.7z" ] && [ -s "$TMPDIR_FF/ffprobe.7z" ]; then
+            cd "$TMPDIR_FF"
+            7z x -y ffprobe.7z
+            if [ -f "ffprobe" ]; then
+              cp ffprobe "$MACOS_DIR/ffprobe"
+              chmod +x "$MACOS_DIR/ffprobe"
+              FFPROBE_SIZE=$(ls -lh "$MACOS_DIR/ffprobe" | awk '{print $5}')
+              echo "✅ Bundled ffprobe (static): $FFPROBE_SIZE"
+            else
+              echo "❌ ffprobe not found after extraction"
+            fi
           else
-            echo "❌ ffprobe not found after brew install"
+            echo "❌ ffprobe download failed or empty"
           fi
           
           # Remove quarantine flags
           xattr -cr "$MACOS_DIR/ffmpeg" 2>/dev/null || true
           xattr -cr "$MACOS_DIR/ffprobe" 2>/dev/null || true
           
-          echo "FFmpeg binaries in app bundle:"
+          # Cleanup
+          rm -rf "$TMPDIR_FF"
+          
+          echo "=== FFmpeg binaries in app bundle ==="
           ls -lah "$MACOS_DIR/ffmpeg" "$MACOS_DIR/ffprobe" 2>/dev/null || echo "Missing!"
 
       - name: Rename and package app
