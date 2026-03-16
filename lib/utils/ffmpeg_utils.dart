@@ -6,87 +6,89 @@ class FFmpegUtils {
   static String? _cachedFFprobePath;
 
   /// Get the path to the FFmpeg executable
+  /// Search order on macOS: Homebrew (correct arch) → bundled in .app → system PATH
   static Future<String> getFFmpegPath() async {
     if (_cachedFFmpegPath != null) return _cachedFFmpegPath!;
 
     String binaryName = Platform.isWindows ? 'ffmpeg.exe' : 'ffmpeg';
     
-    // 1. Check local directory (App dir)
-    final localPaths = <String>[];
-    final exeDir = path.dirname(Platform.resolvedExecutable);
-    localPaths.add(path.join(exeDir, binaryName));
-    
-    // macOS: Also check inside the .app bundle (Contents/MacOS and Contents/Resources)
-    if (Platform.isMacOS) {
-      // exeDir is already Contents/MacOS/ for bundled apps
-      final contentsDir = path.dirname(exeDir); // Contents/
-      localPaths.add(path.join(contentsDir, 'Resources', binaryName));
-    }
-    
-    if (!Platform.isWindows) {
-      localPaths.add(path.join(Directory.current.path, binaryName));
-    }
-
-    for (final p in localPaths) {
+    // 1. On Windows: Check app directory first (bundled next to exe)
+    if (Platform.isWindows) {
+      final exeDir = path.dirname(Platform.resolvedExecutable);
+      final p = path.join(exeDir, binaryName);
       if (await File(p).exists()) {
         _cachedFFmpegPath = p;
-        print('[FFmpeg] Found ffmpeg at: $p');
+        print('[FFmpeg] Found ffmpeg (app dir): $p');
         return p;
       }
     }
-
-    // 2. Check standard macOS locations
+    
+    // 2. On macOS: Check system Homebrew/standard locations FIRST
+    //    (Homebrew installs the correct architecture - Intel or ARM)
     if (Platform.isMacOS) {
       final macPaths = [
-        '/opt/homebrew/bin/ffmpeg',
-        '/usr/local/bin/ffmpeg',
-        '/usr/bin/ffmpeg',
+        '/opt/homebrew/bin/ffmpeg',      // Homebrew on Apple Silicon
+        '/usr/local/bin/ffmpeg',          // Homebrew on Intel
+        '/usr/bin/ffmpeg',                // System
       ];
       for (final p in macPaths) {
         if (await File(p).exists()) {
           _cachedFFmpegPath = p;
-          print('[FFmpeg] Found ffmpeg at: $p');
+          print('[FFmpeg] Found ffmpeg (system): $p');
           return p;
         }
       }
     }
+    
+    // 3. Check app bundle directory (bundled binary - fallback for macOS)
+    final exeDir = path.dirname(Platform.resolvedExecutable);
+    final bundlePaths = <String>[
+      path.join(exeDir, binaryName),
+    ];
+    
+    // macOS: Also check Contents/Resources inside .app bundle
+    if (Platform.isMacOS) {
+      final contentsDir = path.dirname(exeDir);
+      bundlePaths.add(path.join(contentsDir, 'Resources', binaryName));
+    }
+    
+    if (!Platform.isWindows) {
+      bundlePaths.add(path.join(Directory.current.path, binaryName));
+    }
 
-    // 3. Fallback to system PATH
+    for (final p in bundlePaths) {
+      if (await File(p).exists()) {
+        _cachedFFmpegPath = p;
+        print('[FFmpeg] Found ffmpeg (bundled): $p');
+        return p;
+      }
+    }
+
+    // 4. Fallback to system PATH
     print('[FFmpeg] Using system PATH fallback: $binaryName');
     _cachedFFmpegPath = binaryName;
     return binaryName;
   }
 
   /// Get the path to the FFprobe executable
+  /// Search order on macOS: Homebrew (correct arch) → bundled in .app → system PATH
   static Future<String> getFFprobePath() async {
     if (_cachedFFprobePath != null) return _cachedFFprobePath!;
 
     String binaryName = Platform.isWindows ? 'ffprobe.exe' : 'ffprobe';
     
-    // 1. Check local directory
-    final localPaths = <String>[];
-    final exeDir = path.dirname(Platform.resolvedExecutable);
-    localPaths.add(path.join(exeDir, binaryName));
-    
-    // macOS: Also check inside the .app bundle
-    if (Platform.isMacOS) {
-      final contentsDir = path.dirname(exeDir);
-      localPaths.add(path.join(contentsDir, 'Resources', binaryName));
-    }
-    
-    if (!Platform.isWindows) {
-      localPaths.add(path.join(Directory.current.path, binaryName));
-    }
-
-    for (final p in localPaths) {
+    // 1. On Windows: Check app directory first
+    if (Platform.isWindows) {
+      final exeDir = path.dirname(Platform.resolvedExecutable);
+      final p = path.join(exeDir, binaryName);
       if (await File(p).exists()) {
         _cachedFFprobePath = p;
-        print('[FFmpeg] Found ffprobe at: $p');
+        print('[FFmpeg] Found ffprobe (app dir): $p');
         return p;
       }
     }
-
-    // 2. Check standard macOS locations
+    
+    // 2. On macOS: Check system Homebrew/standard locations FIRST
     if (Platform.isMacOS) {
       final macPaths = [
         '/opt/homebrew/bin/ffprobe',
@@ -96,13 +98,36 @@ class FFmpegUtils {
       for (final p in macPaths) {
         if (await File(p).exists()) {
           _cachedFFprobePath = p;
-          print('[FFmpeg] Found ffprobe at: $p');
+          print('[FFmpeg] Found ffprobe (system): $p');
           return p;
         }
       }
     }
+    
+    // 3. Check app bundle directory (bundled binary - fallback)
+    final exeDir = path.dirname(Platform.resolvedExecutable);
+    final bundlePaths = <String>[
+      path.join(exeDir, binaryName),
+    ];
+    
+    if (Platform.isMacOS) {
+      final contentsDir = path.dirname(exeDir);
+      bundlePaths.add(path.join(contentsDir, 'Resources', binaryName));
+    }
+    
+    if (!Platform.isWindows) {
+      bundlePaths.add(path.join(Directory.current.path, binaryName));
+    }
 
-    // 3. Fallback to system PATH
+    for (final p in bundlePaths) {
+      if (await File(p).exists()) {
+        _cachedFFprobePath = p;
+        print('[FFmpeg] Found ffprobe (bundled): $p');
+        return p;
+      }
+    }
+
+    // 4. Fallback to system PATH
     print('[FFmpeg] Using system PATH fallback: $binaryName');
     _cachedFFprobePath = binaryName;
     return binaryName;
