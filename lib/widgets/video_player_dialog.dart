@@ -19,6 +19,12 @@ class VideoPlayerDialog extends StatefulWidget {
 
   /// Show the video player dialog
   static Future<void> show(BuildContext context, String videoPath, {String? title}) {
+    // On macOS, use system player to avoid media_kit crash
+    if (Platform.isMacOS) {
+      Process.run('open', [videoPath]);
+      return Future.value();
+    }
+    
     return showDialog(
       context: context,
       barrierDismissible: true,

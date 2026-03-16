@@ -440,16 +440,18 @@ class _VideoMasteringScreenState extends State<VideoMasteringScreen>
     _seekDebounceTimer?.cancel();
     _uiUpdateTimer?.cancel();
     _saveDebounceTimer?.cancel();
-    _player.dispose();
-    _playerAlt?.dispose();
-    _audioPreviewPlayer.dispose();
+    
+    // Safe dispose - players might not be initialized on macOS
+    try { _player.dispose(); } catch (_) {}
+    try { _playerAlt?.dispose(); } catch (_) {}
+    try { _audioPreviewPlayer.dispose(); } catch (_) {}
     
     // Dispose audio track players
     for (final player in _audioTrackPlayers) {
-      player.dispose();
+      try { player.dispose(); } catch (_) {}
     }
     for (final player in _bgMusicPlayers) {
-      player.dispose();
+      try { player.dispose(); } catch (_) {}
     }
     
     // Close live stream sink if open
@@ -468,27 +470,71 @@ class _VideoMasteringScreenState extends State<VideoMasteringScreen>
   }
 
   void _initializePlayer() {
-    // Initialize Audio Preview Player (independent of video player)
-    _audioPreviewPlayer = Player(configuration: const PlayerConfiguration(pitch: true));
-    _audioPreviewPlayer.stream.completed.listen((completed) {
-      if (completed) {
-        setState(() => _isAudioPreviewPlaying = false);
-      }
-    });
+    try {
+      // Initialize Audio Preview Player (independent of video player)
+      _audioPreviewPlayer = Player(configuration: const PlayerConfiguration(pitch: true));
+      _audioPreviewPlayer.stream.completed.listen((completed) {
+        if (completed) {
+          setState(() => _isAudioPreviewPlaying = false);
+        }
+      });
 
-    // Initialize Video Player
-    _player = Player();
-    _videoController = VideoController(_player);
-    
-    // We can't re-initialize _player here as it is late final and already set
-    // But we can ensure _playerAlt is initialized (fixing hot reload crash)
-    if (_playerAlt == null) {
-      _playerAlt = Player();
-      _videoControllerAlt = VideoController(_playerAlt!);
+      // Initialize Video Player
+      _player = Player();
+      _videoController = VideoController(_player);
+      
+      // We can't re-initialize _player here as it is late final and already set
+      // But we can ensure _playerAlt is initialized (fixing hot reload crash)
+      if (_playerAlt == null) {
+        _playerAlt = Player();
+        _videoControllerAlt = VideoController(_playerAlt!);
+      }
+      
+      _isPlayerInitialized = true;
+      // The Master Clock (_playbackTimer) drives the timeline
+    } catch (e) {
+      print('[Mastering] ❌ media_kit Player init failed: $e');
+      _isPlayerInitialized = false;
+      
+      // Show error dialog on macOS
+      if (Platform.isMacOS) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            showDialog(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                title: const Row(
+                  children: [
+                    Icon(Icons.error_outline, color: Colors.red, size: 28),
+                    SizedBox(width: 10),
+                    Text('Video Player Error'),
+                  ],
+                ),
+                content: Text(
+                  'The built-in video player could not initialize on macOS.\n\n'
+                  'Error: $e\n\n'
+                  'The mastering screen requires the video player to work.\n'
+                  'Video playback will use the system player instead.',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      if (widget.onBack != null) {
+                        widget.onBack!();
+                      } else {
+                        Navigator.of(context).pop();
+                      }
+                    },
+                    child: const Text('Go Back'),
+                  ),
+                ],
+              ),
+            );
+          }
+        });
+      }
     }
-    
-    _isPlayerInitialized = true;
-    // The Master Clock (_playbackTimer) drives the timeline
   }
 
   Future<void> _loadApiKey() async {
