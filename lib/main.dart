@@ -9047,21 +9047,32 @@ class _BulkVideoGeneratorPageState extends State<BulkVideoGeneratorPage> with Ti
       await masteringFlagFile.writeAsString(''); // Empty = no data file
       print('[Main] Created mastering flag file: ${masteringFlagFile.path}');
       
-      // Launch the app (it will detect the flag file and open in mastering mode)
-      if (Platform.isWindows) {
-        // Use Process.start directly (no PowerShell — avoids Defender issues)
+      if (Platform.isMacOS) {
+        // macOS: Use 'open -n' to launch a new instance of the .app bundle
+        // Platform.resolvedExecutable is like: /path/to/App.app/Contents/MacOS/binary
+        // We need the .app path for 'open -n -a'
+        final appBundlePath = _getMacAppBundlePath(exePath);
+        if (appBundlePath != null) {
+          print('[Main] macOS: Launching new instance via: open -n "$appBundlePath"');
+          await Process.start(
+            'open',
+            ['-n', appBundlePath],
+            mode: ProcessStartMode.detached,
+          );
+          print('[Main] Mastering launched via open -n (macOS)');
+        } else {
+          // Fallback: direct binary launch
+          print('[Main] macOS: No .app bundle found, using direct binary');
+          await Process.start(exePath, [], mode: ProcessStartMode.detached);
+        }
+      } else {
+        // Windows/Linux: Use Process.start directly
         await Process.start(
           exePath,
           [],
           mode: ProcessStartMode.detached,
         );
         print('[Main] Mastering launched via Process.start (detached)');
-      } else {
-        await Process.start(
-          exePath,
-          [],
-          mode: ProcessStartMode.detached,
-        );
       }
       
       if (mounted) {
@@ -9083,6 +9094,16 @@ class _BulkVideoGeneratorPageState extends State<BulkVideoGeneratorPage> with Ti
       }
     }
   }
+  
+  /// Extract the .app bundle path from the resolved executable path on macOS
+  /// e.g., /Applications/Veo3 Another.app/Contents/MacOS/veo3_another -> /Applications/Veo3 Another.app
+  String? _getMacAppBundlePath(String exePath) {
+    final appIndex = exePath.indexOf('.app/');
+    if (appIndex != -1) {
+      return exePath.substring(0, appIndex + 4); // includes ".app"
+    }
+    return null;
+  }
 
   /// Launch Application Logs as a separate process/window
   Future<void> _launchLogsProcess() async {
@@ -9102,20 +9123,23 @@ class _BulkVideoGeneratorPageState extends State<BulkVideoGeneratorPage> with Ti
       await Future.delayed(const Duration(milliseconds: 100));
       
       // Launch the app (it will detect the flag file and open in logs mode)
-      if (Platform.isWindows) {
-        // Use Process.start directly (no PowerShell — avoids Defender issues)
+      if (Platform.isMacOS) {
+        final appBundlePath = _getMacAppBundlePath(exePath);
+        if (appBundlePath != null) {
+          print('[Main] macOS: Launching logs via: open -n "$appBundlePath"');
+          await Process.start('open', ['-n', appBundlePath], mode: ProcessStartMode.detached);
+        } else {
+          await Process.start(exePath, [], mode: ProcessStartMode.detached);
+        }
+        print('[Main] Logs viewer launched via open -n (macOS)');
+      } else {
+        // Windows/Linux: Use Process.start directly
         await Process.start(
           exePath,
           [],
           mode: ProcessStartMode.detached,
         );
         print('[Main] Logs viewer launched via Process.start (detached)');
-      } else {
-        await Process.start(
-          exePath,
-          [],
-          mode: ProcessStartMode.detached,
-        );
       }
       
       if (mounted) {
