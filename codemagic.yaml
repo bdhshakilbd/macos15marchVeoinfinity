@@ -85,15 +85,17 @@ workflows:
           echo "Bundled Playwright server:"
           ls -lah "$PW_DIR"/
 
-      - name: Rename app
+      - name: Rename and package app
         script: |
           cd build/macos/Build/Products/Release
           if [ -d "veo3_another.app" ]; then
             mv veo3_another.app "$APP_NAME.app"
           fi
+          zip -r -y "$APP_NAME.zip" "$APP_NAME.app"
     
     artifacts:
       - build/macos/Build/Products/Release/*.app
+      - build/macos/Build/Products/Release/*.zip
     
     publishing:
       email:
