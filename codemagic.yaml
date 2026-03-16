@@ -57,6 +57,13 @@ workflows:
         APP_NAME: "Veo3 Another"
     
     scripts:
+      - name: Fetch Git LFS files
+        script: |
+          git lfs install
+          git lfs pull
+          echo "=== LFS files fetched ==="
+          ls -lah ffmpeg_macos/ 2>/dev/null || echo "ffmpeg_macos dir not found"
+      
       - name: Enable macOS desktop support
         script: |
           flutter config --enable-macos-desktop
@@ -91,14 +98,22 @@ workflows:
           MACOS_DIR="$APP_PATH/Contents/MacOS"
           
           echo "=== Extracting FFmpeg binaries from repo ==="
+          echo "CM_BUILD_DIR: $CM_BUILD_DIR"
+          echo "PWD: $(pwd)"
+          echo "Files in ffmpeg_macos/:"
+          ls -lah "$CM_BUILD_DIR/ffmpeg_macos/" 2>/dev/null || echo "DIR NOT FOUND at CM_BUILD_DIR"
+          ls -lah ffmpeg_macos/ 2>/dev/null || echo "DIR NOT FOUND at PWD"
           
           # Install p7zip for extracting 7z archives
           brew install p7zip 2>/dev/null || true
           
+          # Determine repo root (try CM_BUILD_DIR first, then pwd)
+          REPO_ROOT="${CM_BUILD_DIR:-$(pwd)}"
+          
           # Extract ffmpeg from repo-bundled 7z
           cd /tmp
-          if [ -f "$CM_BUILD_DIR/ffmpeg_macos/ffmpeg.7z" ]; then
-            7z x -y "$CM_BUILD_DIR/ffmpeg_macos/ffmpeg.7z" -o/tmp/ffmpeg_extract
+          if [ -f "$REPO_ROOT/ffmpeg_macos/ffmpeg.7z" ]; then
+            7z x -y "$REPO_ROOT/ffmpeg_macos/ffmpeg.7z" -o/tmp/ffmpeg_extract
             if [ -f "/tmp/ffmpeg_extract/ffmpeg" ]; then
               cp /tmp/ffmpeg_extract/ffmpeg "$MACOS_DIR/ffmpeg"
               chmod +x "$MACOS_DIR/ffmpeg"
@@ -113,8 +128,8 @@ workflows:
           fi
           
           # Extract ffprobe from repo-bundled 7z
-          if [ -f "$CM_BUILD_DIR/ffmpeg_macos/ffprobe.7z" ]; then
-            7z x -y "$CM_BUILD_DIR/ffmpeg_macos/ffprobe.7z" -o/tmp/ffprobe_extract
+          if [ -f "$REPO_ROOT/ffmpeg_macos/ffprobe.7z" ]; then
+            7z x -y "$REPO_ROOT/ffmpeg_macos/ffprobe.7z" -o/tmp/ffprobe_extract
             if [ -f "/tmp/ffprobe_extract/ffprobe" ]; then
               cp /tmp/ffprobe_extract/ffprobe "$MACOS_DIR/ffprobe"
               chmod +x "$MACOS_DIR/ffprobe"
