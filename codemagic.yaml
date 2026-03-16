@@ -97,61 +97,18 @@ workflows:
           APP_PATH="build/macos/Build/Products/Release/veo3_another.app"
           MACOS_DIR="$APP_PATH/Contents/MacOS"
           
-          echo "=== Extracting FFmpeg binaries from repo ==="
-          echo "CM_BUILD_DIR: $CM_BUILD_DIR"
-          echo "PWD: $(pwd)"
-          echo "Files in ffmpeg_macos/:"
-          ls -lah "$CM_BUILD_DIR/ffmpeg_macos/" 2>/dev/null || echo "DIR NOT FOUND at CM_BUILD_DIR"
-          ls -lah ffmpeg_macos/ 2>/dev/null || echo "DIR NOT FOUND at PWD"
+          echo "=== Bundling FFmpeg binaries ==="
+          echo "Repo files:"
+          ls -lah ffmpeg_macos/
           
-          # Install p7zip for extracting 7z archives
-          brew install p7zip 2>/dev/null || true
+          cp ffmpeg_macos/ffmpeg "$MACOS_DIR/ffmpeg"
+          cp ffmpeg_macos/ffprobe "$MACOS_DIR/ffprobe"
           
-          # Determine repo root (try CM_BUILD_DIR first, then pwd)
-          REPO_ROOT="${CM_BUILD_DIR:-$(pwd)}"
+          chmod +x "$MACOS_DIR/ffmpeg" "$MACOS_DIR/ffprobe"
+          xattr -cr "$MACOS_DIR/ffmpeg" "$MACOS_DIR/ffprobe" 2>/dev/null || true
           
-          # Extract ffmpeg from repo-bundled 7z
-          cd /tmp
-          if [ -f "$REPO_ROOT/ffmpeg_macos/ffmpeg.7z" ]; then
-            7z x -y "$REPO_ROOT/ffmpeg_macos/ffmpeg.7z" -o/tmp/ffmpeg_extract
-            if [ -f "/tmp/ffmpeg_extract/ffmpeg" ]; then
-              cp /tmp/ffmpeg_extract/ffmpeg "$MACOS_DIR/ffmpeg"
-              chmod +x "$MACOS_DIR/ffmpeg"
-              FFMPEG_SIZE=$(ls -lh "$MACOS_DIR/ffmpeg" | awk '{print $5}')
-              echo "✅ Bundled ffmpeg (static): $FFMPEG_SIZE"
-            else
-              echo "❌ ffmpeg not found after extraction"
-              ls -la /tmp/ffmpeg_extract/
-            fi
-          else
-            echo "❌ ffmpeg_macos/ffmpeg.7z not found in repo"
-          fi
-          
-          # Extract ffprobe from repo-bundled 7z
-          if [ -f "$REPO_ROOT/ffmpeg_macos/ffprobe.7z" ]; then
-            7z x -y "$REPO_ROOT/ffmpeg_macos/ffprobe.7z" -o/tmp/ffprobe_extract
-            if [ -f "/tmp/ffprobe_extract/ffprobe" ]; then
-              cp /tmp/ffprobe_extract/ffprobe "$MACOS_DIR/ffprobe"
-              chmod +x "$MACOS_DIR/ffprobe"
-              FFPROBE_SIZE=$(ls -lh "$MACOS_DIR/ffprobe" | awk '{print $5}')
-              echo "✅ Bundled ffprobe (static): $FFPROBE_SIZE"
-            else
-              echo "❌ ffprobe not found after extraction"
-              ls -la /tmp/ffprobe_extract/
-            fi
-          else
-            echo "❌ ffmpeg_macos/ffprobe.7z not found in repo"
-          fi
-          
-          # Remove quarantine flags
-          xattr -cr "$MACOS_DIR/ffmpeg" 2>/dev/null || true
-          xattr -cr "$MACOS_DIR/ffprobe" 2>/dev/null || true
-          
-          # Cleanup
-          rm -rf /tmp/ffmpeg_extract /tmp/ffprobe_extract
-          
-          echo "=== FFmpeg binaries in app bundle ==="
-          ls -lah "$MACOS_DIR/ffmpeg" "$MACOS_DIR/ffprobe" 2>/dev/null || echo "Missing!"
+          echo "=== FFmpeg in app bundle ==="
+          ls -lah "$MACOS_DIR/ffmpeg" "$MACOS_DIR/ffprobe"
 
       - name: Rename and package app
         script: |
