@@ -11,20 +11,26 @@ class FFmpegUtils {
 
     String binaryName = Platform.isWindows ? 'ffmpeg.exe' : 'ffmpeg';
     
-    // 1. Check local directory (App dir or Current dir)
-    // Windows: Only check App dir (debug/release folder) to avoid CWD issues
-    // Client requested: "remove all the method only try to get ffmpeg.exe... from the folder where the flutter veo app exe runs... and just use fallback to system path"
+    // 1. Check local directory (App dir)
     final localPaths = <String>[];
-    localPaths.add(path.join(path.dirname(Platform.resolvedExecutable), binaryName));
+    final exeDir = path.dirname(Platform.resolvedExecutable);
+    localPaths.add(path.join(exeDir, binaryName));
+    
+    // macOS: Also check inside the .app bundle (Contents/MacOS and Contents/Resources)
+    if (Platform.isMacOS) {
+      // exeDir is already Contents/MacOS/ for bundled apps
+      final contentsDir = path.dirname(exeDir); // Contents/
+      localPaths.add(path.join(contentsDir, 'Resources', binaryName));
+    }
     
     if (!Platform.isWindows) {
-      // For non-Windows, keep checking current directory as before
       localPaths.add(path.join(Directory.current.path, binaryName));
     }
 
     for (final p in localPaths) {
       if (await File(p).exists()) {
         _cachedFFmpegPath = p;
+        print('[FFmpeg] Found ffmpeg at: $p');
         return p;
       }
     }
@@ -39,12 +45,14 @@ class FFmpegUtils {
       for (final p in macPaths) {
         if (await File(p).exists()) {
           _cachedFFmpegPath = p;
+          print('[FFmpeg] Found ffmpeg at: $p');
           return p;
         }
       }
     }
 
     // 3. Fallback to system PATH
+    print('[FFmpeg] Using system PATH fallback: $binaryName');
     _cachedFFmpegPath = binaryName;
     return binaryName;
   }
@@ -57,7 +65,14 @@ class FFmpegUtils {
     
     // 1. Check local directory
     final localPaths = <String>[];
-    localPaths.add(path.join(path.dirname(Platform.resolvedExecutable), binaryName));
+    final exeDir = path.dirname(Platform.resolvedExecutable);
+    localPaths.add(path.join(exeDir, binaryName));
+    
+    // macOS: Also check inside the .app bundle
+    if (Platform.isMacOS) {
+      final contentsDir = path.dirname(exeDir);
+      localPaths.add(path.join(contentsDir, 'Resources', binaryName));
+    }
     
     if (!Platform.isWindows) {
       localPaths.add(path.join(Directory.current.path, binaryName));
@@ -66,6 +81,7 @@ class FFmpegUtils {
     for (final p in localPaths) {
       if (await File(p).exists()) {
         _cachedFFprobePath = p;
+        print('[FFmpeg] Found ffprobe at: $p');
         return p;
       }
     }
@@ -80,12 +96,14 @@ class FFmpegUtils {
       for (final p in macPaths) {
         if (await File(p).exists()) {
           _cachedFFprobePath = p;
+          print('[FFmpeg] Found ffprobe at: $p');
           return p;
         }
       }
     }
 
     // 3. Fallback to system PATH
+    print('[FFmpeg] Using system PATH fallback: $binaryName');
     _cachedFFprobePath = binaryName;
     return binaryName;
   }

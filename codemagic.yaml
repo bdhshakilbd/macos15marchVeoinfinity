@@ -85,6 +85,42 @@ workflows:
           echo "Bundled Playwright server:"
           ls -lah "$PW_DIR"/
 
+      - name: Bundle FFmpeg into app
+        script: |
+          APP_PATH="build/macos/Build/Products/Release/veo3_another.app"
+          MACOS_DIR="$APP_PATH/Contents/MacOS"
+          
+          echo "Downloading FFmpeg static binary for macOS..."
+          # Install ffmpeg via Homebrew (reliable on Codemagic M1 runners)
+          brew install ffmpeg || true
+          
+          # Copy the Homebrew ffmpeg and ffprobe into the app bundle
+          BREW_FFMPEG=$(which ffmpeg)
+          BREW_FFPROBE=$(which ffprobe)
+          
+          if [ -f "$BREW_FFMPEG" ]; then
+            cp "$BREW_FFMPEG" "$MACOS_DIR/ffmpeg"
+            chmod +x "$MACOS_DIR/ffmpeg"
+            echo "✅ Bundled ffmpeg from: $BREW_FFMPEG"
+          else
+            echo "❌ ffmpeg not found after brew install"
+          fi
+          
+          if [ -f "$BREW_FFPROBE" ]; then
+            cp "$BREW_FFPROBE" "$MACOS_DIR/ffprobe"
+            chmod +x "$MACOS_DIR/ffprobe"
+            echo "✅ Bundled ffprobe from: $BREW_FFPROBE"
+          else
+            echo "❌ ffprobe not found after brew install"
+          fi
+          
+          # Remove quarantine flags
+          xattr -cr "$MACOS_DIR/ffmpeg" 2>/dev/null || true
+          xattr -cr "$MACOS_DIR/ffprobe" 2>/dev/null || true
+          
+          echo "FFmpeg binaries in app bundle:"
+          ls -lah "$MACOS_DIR/ffmpeg" "$MACOS_DIR/ffprobe" 2>/dev/null || echo "Missing!"
+
       - name: Rename and package app
         script: |
           cd build/macos/Build/Products/Release
